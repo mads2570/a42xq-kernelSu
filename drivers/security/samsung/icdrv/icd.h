@@ -17,11 +17,11 @@
 #ifndef __ICD_H
 #define __ICD_H
 
-#ifdef CONFIG_SEC_KUNIT
+#ifdef CONFIG_KUNIT
 #include <kunit/mock.h>
 #include <linux/file.h>
 #endif
-#ifdef CONFIG_SEC_KUNIT
+#ifdef CONFIG_KUNIT
 extern bool contains_str(const char * const array[], const char *str);
 #endif
 #endif

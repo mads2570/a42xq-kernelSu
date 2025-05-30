@@ -1,5 +1,5 @@
 config MUIC_SM5714
-	tristate "SM5714 MUIC"
+	bool "SM5714 MUIC"
 	depends on USE_MUIC
 	default n
 	help

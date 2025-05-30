@@ -239,15 +239,14 @@ int thermal_build_list_of_policies(char *buf)
 {
 	struct thermal_governor *pos;
 	ssize_t count = 0;
-	ssize_t size = PAGE_SIZE;
 
 	mutex_lock(&thermal_governor_lock);
 
 	list_for_each_entry(pos, &thermal_governor_list, governor_list) {
-		size = PAGE_SIZE - count;
-		count += scnprintf(buf + count, size, "%s ", pos->name);
+		count += scnprintf(buf + count, PAGE_SIZE - count, "%s ",
+				   pos->name);
 	}
-	count += scnprintf(buf + count, size, "\n");
+	count += scnprintf(buf + count, PAGE_SIZE - count, "\n");
 
 	mutex_unlock(&thermal_governor_lock);
 
@@ -481,6 +480,8 @@ static void thermal_zone_device_init(struct thermal_zone_device *tz)
 {
 	struct thermal_instance *pos;
 	tz->temperature = THERMAL_TEMP_INVALID;
+	tz->prev_low_trip = -INT_MAX;
+	tz->prev_high_trip = INT_MAX;
 	list_for_each_entry(pos, &tz->thermal_instances, tz_node)
 		pos->initialized = false;
 }
@@ -1401,7 +1402,7 @@ free_tz:
 EXPORT_SYMBOL_GPL(thermal_zone_device_register);
 
 /**
- * thermal_device_unregister - removes the registered thermal zone device
+ * thermal_zone_device_unregister - removes the registered thermal zone device
  * @tz: the thermal zone device to remove
  */
 void thermal_zone_device_unregister(struct thermal_zone_device *tz)
@@ -1633,31 +1634,30 @@ static inline int thermal_generate_netlink_event(struct thermal_zone_device *tz,
 #endif /* !CONFIG_NET */
 
 #if defined(CONFIG_SEC_PM)
-#define BUF_SIZE	SZ_1K
 static void __ref cdev_print(struct work_struct *work)
 {
 	struct thermal_cooling_device *cdev;
 	unsigned long cur_state = 0;
 	int added = 0, ret = 0;
-	char buffer[BUF_SIZE] = { 0, };
+	char buffer[500] = { 0, };
+	bool is_state = false;
 
 	mutex_lock(&thermal_list_lock);
 	list_for_each_entry(cdev, &thermal_cdev_list, node) {
 		if (cdev->ops->get_cur_state)
-			cdev->ops->get_cur_state(cdev, &cur_state);
+			cdev->ops->get_cur_state(cdev, &cur_state);;
 
 		if (cur_state) {
+			is_state = true;
 			ret = snprintf(buffer + added, sizeof(buffer) - added,
 					   "[%s:%ld]", cdev->type, cur_state);
 			added += ret;
-
-			if (added >= BUF_SIZE)
-				break;
 		}
 	}
 	mutex_unlock(&thermal_list_lock);
 
-	pr_info("thermal: cdev%s\n", buffer);
+	if (is_state)
+		printk("thermal: cdev%s\n", buffer);
 
 	schedule_delayed_work(&cdev_print_work, HZ * 5);
 }

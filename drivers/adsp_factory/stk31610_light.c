@@ -160,7 +160,7 @@ static ssize_t light_circle_show(struct device *dev,
 {
 #if defined(CONFIG_SEC_A42XQ_PROJECT) || defined(CONFIG_SEC_A42XUQ_PROJECT)
 	return snprintf(buf, PAGE_SIZE, "42.72 12.50 2.8\n");
-#elif defined(CONFIG_SEC_A52XQ_PROJECT) || defined(CONFIG_SEC_M62XQ_PROJECT)
+#elif defined(CONFIG_SEC_A52XQ_PROJECT)
 	return snprintf(buf, PAGE_SIZE, "25.8 3.71 2.6\n");
 #else
 	return snprintf(buf, PAGE_SIZE, "0 0 0\n");

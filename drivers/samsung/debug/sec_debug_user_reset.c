@@ -29,7 +29,6 @@
 #include <linux/fs.h>
 #include <linux/memblock.h>
 #include <linux/of.h>
-#include <linux/of_reserved_mem.h>
 #include <linux/sec_debug.h>
 #include <linux/sec_param.h>
 #include <linux/sec_class.h>
@@ -463,16 +462,11 @@ static const struct file_operations sec_debug_rdx_bootdev_fops = {
 	.write = sec_debug_rdx_bootdev_proc_write,
 };
 
-static int sec_debug_get_rdx_bootdev_region(phys_addr_t *paddr, u64 *size)
+static int __init sec_debug_map_rdx_bootdev_region(void)
 {
 	struct device_node *parent, *node;
-
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,19,0)
-	struct reserved_mem *res_mem;
-#else
 	int ret = 0;
 	u64 temp[2];
-#endif
 
 	parent = of_find_node_by_path("/reserved-memory");
 	if (!parent) {
@@ -486,43 +480,15 @@ static int sec_debug_get_rdx_bootdev_region(phys_addr_t *paddr, u64 *size)
 		return -EINVAL;
 	}
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,19,0)
-	res_mem = of_reserved_mem_lookup(node);
-	if (!res_mem)
-		goto fail;
-
-	*paddr = res_mem->base;
-	*size = (u64)res_mem->size;
-#else
 	ret = of_property_read_u64_array(node, "reg", &temp[0], 2);
-	if (ret)
-		goto fail;
-
-	*paddr = (phys_addr_t)temp[0];
-	*size = temp[1];
-#endif
-
-	return 0;
-
-fail:
-	pr_err("failed to get address from node\n");
-	return -1;
-}
-
-static int __init sec_debug_map_rdx_bootdev_region(void)
-{
-	int ret;
-	phys_addr_t paddr;
-	u64 size;
-
-	ret = sec_debug_get_rdx_bootdev_region(&paddr, &size);
+	if (ret) {
+		pr_err("failed to get address from node\n");
+		return -1;
+	}
 
 	mutex_lock(&rdx_bootdev_mutex);
-
-	if (!ret) {
-		sec_debug_rdx_bootdev_paddr = paddr;
-		sec_debug_rdx_bootdev_size = size;
-	}
+	sec_debug_rdx_bootdev_paddr = temp[0];
+	sec_debug_rdx_bootdev_size = temp[1];
 
 	pr_info("sec_debug_rdx_bootdev : %pa, 0x%llx\n",
 		&sec_debug_rdx_bootdev_paddr, sec_debug_rdx_bootdev_size);
@@ -609,7 +575,6 @@ static int set_debug_reset_header(struct debug_reset_header *header)
 	return ret;
 }
 
-static uint32_t summary_size;
 static int sec_reset_summary_info_init(void)
 {
 	int ret = 0;
@@ -625,15 +590,14 @@ static int sec_reset_summary_info_init(void)
 	summary_info = get_debug_reset_header();
 	if (summary_info == NULL)
 		return -EINVAL;
-	summary_size = dbg_parttion_get_part_size(debug_index_reset_summary);
 
-	if (summary_info->summary_size > summary_size) {
+	if (summary_info->summary_size > SEC_DEBUG_RESET_SUMMARY_SIZE) {
 		pr_err("summary_size has problem.\n");
 		ret = -EINVAL;
 		goto error_summary_info;
 	}
 
-	summary_buf = vmalloc(summary_size);
+	summary_buf = vmalloc(SEC_DEBUG_RESET_SUMMARY_SIZE);
 	if (!summary_buf) {
 		pr_err("fail - kmalloc for summary_buf\n");
 		ret = -ENOMEM;
@@ -688,7 +652,7 @@ static ssize_t sec_reset_summary_info_proc_read(struct file *file,
 	}
 
 	if ((pos >= summary_info->summary_size) ||
-	    (pos >= summary_size)) {
+	    (pos >= SEC_DEBUG_RESET_SUMMARY_SIZE)) {
 		pr_info("pos %lld, size %d\n", pos, summary_info->summary_size);
 		sec_reset_summary_completed();
 		mutex_unlock(&summary_mutex);

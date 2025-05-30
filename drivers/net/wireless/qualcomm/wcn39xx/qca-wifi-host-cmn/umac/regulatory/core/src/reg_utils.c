@@ -449,7 +449,8 @@ bool reg_is_etsi13_srd_chan_allowed_master_mode(struct wlan_objmgr_pdev *pdev)
 }
 #endif
 
-QDF_STATUS reg_set_band(struct wlan_objmgr_pdev *pdev, uint32_t band_bitmap)
+QDF_STATUS reg_set_band(struct wlan_objmgr_pdev *pdev,
+			enum band_info band)
 {
 	struct wlan_regulatory_psoc_priv_obj *psoc_priv_obj;
 	struct wlan_regulatory_pdev_priv_obj *pdev_priv_obj;
@@ -463,8 +464,8 @@ QDF_STATUS reg_set_band(struct wlan_objmgr_pdev *pdev, uint32_t band_bitmap)
 		return QDF_STATUS_E_INVAL;
 	}
 
-	if (pdev_priv_obj->band_capability == band_bitmap) {
-		reg_info("same band %d", band_bitmap);
+	if (pdev_priv_obj->band_capability == band) {
+		reg_info("same band %d", band);
 		return QDF_STATUS_SUCCESS;
 	}
 
@@ -480,8 +481,8 @@ QDF_STATUS reg_set_band(struct wlan_objmgr_pdev *pdev, uint32_t band_bitmap)
 		return QDF_STATUS_E_INVAL;
 	}
 
-	reg_info("set band bitmap: %d", band_bitmap);
-	pdev_priv_obj->band_capability = band_bitmap;
+	reg_info("set band_info: %d", band);
+	pdev_priv_obj->band_capability = band;
 
 	reg_compute_pdev_current_chan_list(pdev_priv_obj);
 
@@ -491,9 +492,11 @@ QDF_STATUS reg_set_band(struct wlan_objmgr_pdev *pdev, uint32_t band_bitmap)
 }
 
 QDF_STATUS reg_get_band(struct wlan_objmgr_pdev *pdev,
-			uint32_t *band_bitmap)
+			enum band_info *band)
 {
+	struct wlan_regulatory_psoc_priv_obj *psoc_priv_obj;
 	struct wlan_regulatory_pdev_priv_obj *pdev_priv_obj;
+	struct wlan_objmgr_psoc *psoc;
 
 	pdev_priv_obj = reg_get_pdev_obj(pdev);
 
@@ -502,8 +505,20 @@ QDF_STATUS reg_get_band(struct wlan_objmgr_pdev *pdev,
 		return QDF_STATUS_E_INVAL;
 	}
 
-	reg_debug("get band bitmap: %d", pdev_priv_obj->band_capability);
-	*band_bitmap = pdev_priv_obj->band_capability;
+	psoc = wlan_pdev_get_psoc(pdev);
+	if (!psoc) {
+		reg_err("psoc is NULL");
+		return QDF_STATUS_E_INVAL;
+	}
+
+	psoc_priv_obj = reg_get_psoc_obj(psoc);
+	if (!IS_VALID_PSOC_REG_OBJ(psoc_priv_obj)) {
+		reg_err("psoc reg component is NULL");
+		return QDF_STATUS_E_INVAL;
+	}
+
+	reg_debug("get band_info: %d", pdev_priv_obj->band_capability);
+	*band = pdev_priv_obj->band_capability;
 
 	return QDF_STATUS_SUCCESS;
 }
@@ -511,6 +526,7 @@ QDF_STATUS reg_get_band(struct wlan_objmgr_pdev *pdev,
 #ifdef DISABLE_CHANNEL_LIST
 QDF_STATUS reg_restore_cached_channels(struct wlan_objmgr_pdev *pdev)
 {
+	struct wlan_regulatory_psoc_priv_obj *psoc_priv_obj;
 	struct wlan_regulatory_pdev_priv_obj *pdev_priv_obj;
 	struct wlan_objmgr_psoc *psoc;
 	QDF_STATUS status;
@@ -524,6 +540,12 @@ QDF_STATUS reg_restore_cached_channels(struct wlan_objmgr_pdev *pdev)
 	psoc = wlan_pdev_get_psoc(pdev);
 	if (!psoc) {
 		reg_err("psoc is NULL");
+		return QDF_STATUS_E_INVAL;
+	}
+
+	psoc_priv_obj = reg_get_psoc_obj(psoc);
+	if (!IS_VALID_PSOC_REG_OBJ(psoc_priv_obj)) {
+		reg_err("psoc reg component is NULL");
 		return QDF_STATUS_E_INVAL;
 	}
 
@@ -535,6 +557,7 @@ QDF_STATUS reg_restore_cached_channels(struct wlan_objmgr_pdev *pdev)
 
 QDF_STATUS reg_disable_cached_channels(struct wlan_objmgr_pdev *pdev)
 {
+	struct wlan_regulatory_psoc_priv_obj *psoc_priv_obj;
 	struct wlan_regulatory_pdev_priv_obj *pdev_priv_obj;
 	struct wlan_objmgr_psoc *psoc;
 	QDF_STATUS status;
@@ -548,6 +571,12 @@ QDF_STATUS reg_disable_cached_channels(struct wlan_objmgr_pdev *pdev)
 	psoc = wlan_pdev_get_psoc(pdev);
 	if (!psoc) {
 		reg_err("psoc is NULL");
+		return QDF_STATUS_E_INVAL;
+	}
+
+	psoc_priv_obj = reg_get_psoc_obj(psoc);
+	if (!IS_VALID_PSOC_REG_OBJ(psoc_priv_obj)) {
+		reg_err("psoc reg component is NULL");
 		return QDF_STATUS_E_INVAL;
 	}
 
@@ -670,6 +699,11 @@ QDF_STATUS reg_cache_channel_state(struct wlan_objmgr_pdev *pdev,
 	return QDF_STATUS_SUCCESS;
 }
 #endif /* CONFIG_CHAN_NUM_API */
+// void set_disable_channel_state(
+	// struct wlan_regulatory_pdev_priv_obj *pdev_priv_obj)
+// {
+	// pdev_priv_obj->disable_cached_channels = pdev_priv_obj->sap_state;
+// }
 #endif
 
 #ifdef CONFIG_REG_CLIENT
@@ -799,8 +833,6 @@ QDF_STATUS reg_set_config_vars(struct wlan_objmgr_psoc *psoc,
 		config_vars.enable_srd_chan_in_master_mode;
 	psoc_priv_obj->enable_11d_in_world_mode =
 		config_vars.enable_11d_in_world_mode;
-	psoc_priv_obj->retain_nol_across_regdmn_update =
-		config_vars.retain_nol_across_regdmn_update;
 
 	status = wlan_objmgr_psoc_try_get_ref(psoc, WLAN_REGULATORY_SB_ID);
 	if (QDF_IS_STATUS_ERROR(status)) {

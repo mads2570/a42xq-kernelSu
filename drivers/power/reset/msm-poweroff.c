@@ -489,7 +489,6 @@ static void halt_spmi_pmic_arbiter(void)
 static void msm_restart_prepare(const char *cmd)
 {
 	bool need_warm_reset = false;
-
 #ifndef CONFIG_SEC_DEBUG
 	/* Write download mode flags if we're panic'ing
 	 * Write download mode flags if restart_mode says so
@@ -531,10 +530,6 @@ static void msm_restart_prepare(const char *cmd)
 			qpnp_pon_set_restart_reason(
 				PON_RESTART_REASON_BOOTLOADER);
 			__raw_writel(0x77665500, restart_reason);
-		} else if (!strncmp(cmd, "recovery-update", 15)) {
-			qpnp_pon_set_restart_reason(
-				PON_RESTART_REASON_RECOVERY_UPDATE);
-			__raw_writel(0x776655cc, restart_reason);
 		} else if (!strncmp(cmd, "recovery", 8)) {
 			qpnp_pon_set_restart_reason(
 				PON_RESTART_REASON_RECOVERY);

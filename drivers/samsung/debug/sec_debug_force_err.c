@@ -68,11 +68,9 @@ static void __simulate_apps_wdog_bite(void)
 {
 	unsigned long time_out_jiffies;
 #ifdef CONFIG_HOTPLUG_CPU
-	unsigned int cpu;
+	int cpu;
 
 	for_each_online_cpu(cpu) {
-		BUG_ON(cpu >= NR_CPUS);
-
 		if (cpu == 0)
 			continue;
 		cpu_down(cpu);

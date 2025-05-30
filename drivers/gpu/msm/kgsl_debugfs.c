@@ -147,11 +147,7 @@ static int print_mem_entry(void *data, void *ptr)
 	flags[3] = get_alignflag(m);
 	flags[4] = get_cacheflag(m);
 	flags[5] = kgsl_memdesc_use_cpu_map(m) ? 'p' : '-';
-	/*
-	 * Show Y if at least one vma has this entry
-	 * mapped (could be multiple)
-	 */
-	flags[6] = atomic_read(&entry->map_count) ? 'Y' : 'N';
+	flags[6] = (m->useraddr) ? 'Y' : 'N';
 	flags[7] = kgsl_memdesc_is_secured(m) ?  's' : '-';
 	flags[8] = m->flags & KGSL_MEMFLAGS_SPARSE_PHYS ? 'P' : '-';
 	flags[9] = '\0';
@@ -161,17 +157,25 @@ static int print_mem_entry(void *data, void *ptr)
 	if (usermem_type == KGSL_MEM_ENTRY_ION)
 		kgsl_get_egl_counts(entry, &egl_surface_count,
 						&egl_image_count);
-	seq_printf(s, "%pK %pK %16llu %5d %9s %10s %16s %5d %16d %6d %6d",
+#if defined(CONFIG_DISPLAY_SAMSUNG) && !defined(CONFIG_SAMSUNG_PRODUCT_SHIP)
+	seq_printf(s, m->useraddr ? "%p %p %16llu %5d %9s %10s %16s %5d %16llu %6d %6d" :
+			"%p %pK %16llu %5d %9s %10s %16s %5d %16llu %6d %6d",
 			(uint64_t *)(uintptr_t) m->gpuaddr,
-			/*
-			 * Show zero for the useraddr - we can't reliably track
-			 * that value for multiple vmas anyway
-			 */
-			0, m->size, entry->id, flags,
+			(unsigned long *) m->useraddr,
+			m->size, entry->id, flags,
+			memtype_str(usermem_type),
+			usage, (m->sgt ? m->sgt->nents : 0), m->mapsize,
+			egl_surface_count, egl_image_count);
+#else
+	seq_printf(s, "%pK %pK %16llu %5d %9s %10s %16s %5d %16ld %6d %6d",
+			(uint64_t *)(uintptr_t) m->gpuaddr,
+			(unsigned long *) m->useraddr,
+			m->size, entry->id, flags,
 			memtype_str(usermem_type),
 			usage, (m->sgt ? m->sgt->nents : 0),
-			atomic_read(&entry->map_count),
+			atomic_long_read(&m->mapsize),
 			egl_surface_count, egl_image_count);
+#endif
 
 	if (entry->metadata[0] != 0)
 		seq_printf(s, " %s", entry->metadata);
@@ -241,7 +245,7 @@ static int process_mem_seq_show(struct seq_file *s, void *ptr)
 	if (ptr == SEQ_START_TOKEN) {
 		seq_printf(s, "%16s %16s %16s %5s %9s %10s %16s %5s %16s %6s %6s\n",
 			"gpuaddr", "useraddr", "size", "id", "flags", "type",
-			"usage", "sglen", "mapcount", "eglsrf", "eglimg");
+			"usage", "sglen", "mapsize", "eglsrf", "eglimg");
 		return 0;
 	} else
 		return print_mem_entry(s, ptr);

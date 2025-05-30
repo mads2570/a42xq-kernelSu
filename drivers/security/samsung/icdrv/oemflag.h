@@ -17,9 +17,6 @@
 #ifndef __OEM_FLAG_H
 #define __OEM_FLAG_H
 
-#define OEMFLAG_SUCCESS 0
-#define OEMFLAG_FAIL -1
-
 enum oemflag_id {
 	OEMFLAG_NONE = 0,
 	OEMFLAG_MIN_FLAG = 2,
@@ -30,11 +27,11 @@ enum oemflag_id {
 	OEMFLAG_NUM_OF_FLAG,
 };
 
-#ifdef CONFIG_SEC_KUNIT
+#ifdef CONFIG_KUNIT
 #include <kunit/mock.h>
 #endif
 
-#ifdef CONFIG_SEC_KUNIT
+#ifdef CONFIG_KUNIT
 extern int oem_flags_set(enum oemflag_id index);
 extern int oem_flags_get(enum oemflag_id index);
 #else

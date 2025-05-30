@@ -41,10 +41,6 @@ static void zcomp_strm_free(struct zcomp_strm *zstrm)
 	if (!IS_ERR_OR_NULL(zstrm->tfm))
 		crypto_free_comp(zstrm->tfm);
 	free_pages((unsigned long)zstrm->buffer, 1);
-	if (zstrm->tmpbuf) {
-		free_pages((unsigned long)zstrm->tmpbuf, 1);
-		zstrm->tmpbuf = NULL;
-	}
 	kfree(zstrm);
 }
 
@@ -64,8 +60,7 @@ static struct zcomp_strm *zcomp_strm_alloc(struct zcomp *comp)
 	 * case when compressed size is larger than the original one
 	 */
 	zstrm->buffer = (void *)__get_free_pages(GFP_KERNEL | __GFP_ZERO, 1);
-	zstrm->tmpbuf = (void *)__get_free_pages(GFP_KERNEL | __GFP_ZERO, 1);
-	if (IS_ERR_OR_NULL(zstrm->tfm) || !zstrm->buffer || !zstrm->tmpbuf) {
+	if (IS_ERR_OR_NULL(zstrm->tfm) || !zstrm->buffer) {
 		zcomp_strm_free(zstrm);
 		zstrm = NULL;
 	}
