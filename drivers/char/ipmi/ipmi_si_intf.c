@@ -1073,13 +1073,10 @@ static void request_events(void *send_info)
 	atomic_set(&smi_info->req_events, 1);
 }
 
-static void set_need_watch(void *send_info, unsigned int watch_mask)
+static void set_need_watch(void *send_info, bool enable)
 {
 	struct smi_info *smi_info = send_info;
 	unsigned long flags;
-	int enable;
-
-	enable = !!(watch_mask & ~IPMI_WATCH_MASK_INTERNAL);
 
 	atomic_set(&smi_info->need_watch, enable);
 	spin_lock_irqsave(&smi_info->si_lock, flags);
@@ -2190,20 +2187,6 @@ skip_fallback_noirq:
 }
 module_init(init_ipmi_si);
 
-static void wait_msg_processed(struct smi_info *smi_info)
-{
-	unsigned long jiffies_now;
-	long time_diff;
-
-	while (smi_info->curr_msg || (smi_info->si_state != SI_NORMAL)) {
-		jiffies_now = jiffies;
-		time_diff = (((long)jiffies_now - (long)smi_info->last_timeout_jiffies)
-		     * SI_USEC_PER_JIFFY);
-		smi_event_handler(smi_info, time_diff);
-		schedule_timeout_uninterruptible(1);
-	}
-}
-
 static void shutdown_smi(void *send_info)
 {
 	struct smi_info *smi_info = send_info;
@@ -2238,13 +2221,16 @@ static void shutdown_smi(void *send_info)
 	 * in the BMC.  Note that timers and CPU interrupts are off,
 	 * so no need for locks.
 	 */
-	wait_msg_processed(smi_info);
-
+	while (smi_info->curr_msg || (smi_info->si_state != SI_NORMAL)) {
+		poll(smi_info);
+		schedule_timeout_uninterruptible(1);
+	}
 	if (smi_info->handlers)
 		disable_si_irq(smi_info);
-
-	wait_msg_processed(smi_info);
-
+	while (smi_info->curr_msg || (smi_info->si_state != SI_NORMAL)) {
+		poll(smi_info);
+		schedule_timeout_uninterruptible(1);
+	}
 	if (smi_info->handlers)
 		smi_info->handlers->cleanup(smi_info->si_sm);
 

@@ -204,17 +204,26 @@ enum power_supply_ext_property {
 	POWER_SUPPLY_EXT_PROP_CHARGE_UNO_CONTROL,
 	POWER_SUPPLY_EXT_PROP_PROP_FILTER_CFG,
 	POWER_SUPPLY_EXT_PROP_ENABLE_HW_FACTORY_MODE,
+	POWER_SUPPLY_EXT_PROP_FACTORY_MODE,
 	POWER_SUPPLY_EXT_PROP_IB_MODE,
 	POWER_SUPPLY_EXT_PROP_OB_MODE_CABLE_REMOVED,
 	POWER_SUPPLY_EXT_PROP_BATT_F_MODE,
 	POWER_SUPPLY_EXT_PROP_BATT_VSYS,
 	POWER_SUPPLY_EXT_PROP_PMIC_BAT_VOLTAGE,
+	POWER_SUPPLY_EXT_PROP_USB_BOOTCOMPLETE,
 	POWER_SUPPLY_EXT_PROP_RP_LEVEL,
 #if defined(CONFIG_DISCRETE_CHARGER)
 	POWER_SUPPLY_EXT_PROP_FLASH_STATE,
 #endif
+	POWER_SUPPLY_EXT_PROP_MTK_FG_INIT,
 	POWER_SUPPLY_EXT_PROP_SRCCAP,
 	POWER_SUPPLY_EXT_PROP_BUCK_STATE,
+	POWER_SUPPLY_EXT_PROP_MIX_LIMIT,
+	POWER_SUPPLY_EXT_PROP_BATTERY_ID,
+	POWER_SUPPLY_EXT_PROP_PASS_THROUGH_MODE,
+	POWER_SUPPLY_EXT_PROP_PASS_THROUGH_MODE_TA_VOL,
+	POWER_SUPPLY_EXT_PROP_CHARGE_OTG_CONTROL,
+	POWER_SUPPLY_EXT_PROP_ABNORMAL_TA,
 };
 
 enum rx_device_type {
@@ -234,9 +243,13 @@ enum sec_battery_usb_conf {
 };
 
 enum power_supply_ext_health {
-	POWER_SUPPLY_HEALTH_VSYS_OVP = POWER_SUPPLY_HEALTH_MAX,
-	POWER_SUPPLY_HEALTH_VBAT_OVP,
-	POWER_SUPPLY_HEALTH_DC_ERR,
+	POWER_SUPPLY_EXT_HEALTH_MIN = 20,
+	POWER_SUPPLY_EXT_HEALTH_UNDERVOLTAGE = POWER_SUPPLY_EXT_HEALTH_MIN,
+	POWER_SUPPLY_EXT_HEALTH_OVERHEATLIMIT,
+	POWER_SUPPLY_EXT_HEALTH_VSYS_OVP,
+	POWER_SUPPLY_EXT_HEALTH_VBAT_OVP,
+	POWER_SUPPLY_EXT_HEALTH_DC_ERR,
+	POWER_SUPPLY_EXT_HEALTH_MAX,
 };
 
 enum sec_battery_voltage_mode {
@@ -459,6 +472,13 @@ enum sec_battery_direct_charging_source_ctrl {
 	SEC_TEST_MODE = 0x1,
 	SEC_SEND_UVDM = 0x2,
 	SEC_STORE_MODE = 0x4,
+};
+
+enum sec_battery_slate_mode {
+	SEC_SLATE_OFF = 0,
+	SEC_SLATE_MODE,
+	SEC_SMART_SWITCH_SLATE,
+	SEC_SMART_SWITCH_SRC,
 };
 
 /* tx_event */
@@ -687,7 +707,6 @@ static inline struct power_supply *get_power_supply_by_name(char *name)
 
 #define is_hv_wireless_type(cable_type) ( \
 	cable_type == SEC_BATTERY_CABLE_HV_WIRELESS || \
-	cable_type == SEC_BATTERY_CABLE_HV_WIRELESS_ETX || \
 	cable_type == SEC_BATTERY_CABLE_WIRELESS_HV_STAND || \
 	cable_type == SEC_BATTERY_CABLE_HV_WIRELESS_20 || \
 	cable_type == SEC_BATTERY_CABLE_HV_WIRELESS_20_LIMIT || \
@@ -707,13 +726,15 @@ static inline struct power_supply *get_power_supply_by_name(char *name)
 #define is_wireless_type(cable_type) \
 	(is_hv_wireless_type(cable_type) || is_nv_wireless_type(cable_type))
 
+#define is_wireless_fake_type(cable_type) \
+	(is_wireless_type(cable_type) || (cable_type == SEC_BATTERY_CABLE_WIRELESS_FAKE))
+
 #define is_not_wireless_type(cable_type) ( \
 	cable_type != SEC_BATTERY_CABLE_WIRELESS && \
 	cable_type != SEC_BATTERY_CABLE_PMA_WIRELESS && \
 	cable_type != SEC_BATTERY_CABLE_WIRELESS_PACK && \
 	cable_type != SEC_BATTERY_CABLE_WIRELESS_STAND && \
 	cable_type != SEC_BATTERY_CABLE_HV_WIRELESS && \
-	cable_type != SEC_BATTERY_CABLE_HV_WIRELESS_ETX && \
 	cable_type != SEC_BATTERY_CABLE_PREPARE_WIRELESS_HV && \
 	cable_type != SEC_BATTERY_CABLE_WIRELESS_HV_STAND && \
 	cable_type != SEC_BATTERY_CABLE_WIRELESS_VEHICLE && \
@@ -764,6 +785,12 @@ static inline struct power_supply *get_power_supply_by_name(char *name)
 
 #define is_slate_mode(battery) ((battery->current_event & SEC_BAT_CURRENT_EVENT_SLATE) \
 		== SEC_BAT_CURRENT_EVENT_SLATE)
+
+#define can_usb_suspend_type(cable_type) ( \
+	cable_type == SEC_BATTERY_CABLE_PDIC || \
+	cable_type == SEC_BATTERY_CABLE_PDIC_APDO || \
+	cable_type == SEC_BATTERY_CABLE_USB || \
+	cable_type == SEC_BATTERY_CABLE_USB_CDP)
 
 #define is_pd_wire_type(cable_type) ( \
 	cable_type == SEC_BATTERY_CABLE_PDIC || \

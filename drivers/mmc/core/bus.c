@@ -131,7 +131,7 @@ static void mmc_bus_shutdown(struct device *dev)
 {
 	struct mmc_driver *drv = to_mmc_driver(dev->driver);
 	struct mmc_card *card = mmc_dev_to_card(dev);
-	struct mmc_host *host = card->host;
+	struct mmc_host *host;
 	int ret;
 
 	if (!drv) {
@@ -143,6 +143,8 @@ static void mmc_bus_shutdown(struct device *dev)
 		pr_debug("%s: %s: card is NULL\n", dev_name(dev), __func__);
 		return;
 	}
+
+	host = card->host;
 
 	/* disable rescan in shutdown sequence */
 	host->rescan_disable = 1;
@@ -445,6 +447,11 @@ void mmc_remove_card(struct mmc_card *card)
 	mmc_remove_card_debugfs(card);
 #endif
 
+	if (host->cqe_enabled) {
+		host->cqe_ops->cqe_disable(host);
+		host->cqe_enabled = false;
+	}
+
 	if (mmc_card_present(card)) {
 		if (mmc_host_is_spi(card->host)) {
 			pr_info("%s: SPI card removed\n",
@@ -461,10 +468,6 @@ void mmc_remove_card(struct mmc_card *card)
 	if (host->ops->exit_dbg_mode)
 		host->ops->exit_dbg_mode(host);
 
-	if (host->cqe_enabled) {
-		host->cqe_ops->cqe_disable(host);
-		host->cqe_enabled = false;
-	}
-
 	put_device(&card->dev);
 }
+

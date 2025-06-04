@@ -89,8 +89,6 @@
 #define ARM_LPAE_PTE_TYPE_TABLE		3
 #define ARM_LPAE_PTE_TYPE_PAGE		3
 
-#define ARM_LPAE_PTE_ADDR_MASK		GENMASK_ULL(47,12)
-
 #define ARM_LPAE_PTE_SH_MASK		(((arm_lpae_iopte)0x3) << 8)
 #define ARM_LPAE_PTE_NSTABLE		(((arm_lpae_iopte)1) << 63)
 #define ARM_LPAE_PTE_XN			(((arm_lpae_iopte)3) << 53)
@@ -289,27 +287,6 @@ static void iopte_tblcnt_add(arm_lpae_iopte *table_ptep, int cnt)
 	iopte_tblcnt_set(table_ptep, current_cnt);
 }
 
-static arm_lpae_iopte paddr_to_iopte(phys_addr_t paddr,
-				     struct arm_lpae_io_pgtable *data)
-{
-	arm_lpae_iopte pte = paddr;
-
-	/* Of the bits which overlap, either 51:48 or 15:12 are always RES0 */
-	return (pte | (pte >> (48 - 12))) & ARM_LPAE_PTE_ADDR_MASK;
-}
-
-static __maybe_unused phys_addr_t iopte_to_paddr(arm_lpae_iopte pte,
-				  struct arm_lpae_io_pgtable *data)
-{
-	u64 paddr = pte & ARM_LPAE_PTE_ADDR_MASK;
-
-	if (ARM_LPAE_GRANULE(data) < SZ_64K)
-		return paddr;
-
-	/* Rotate the packed high-order bits back to the top */
-	return (paddr | (paddr << (48 - 12))) & (ARM_LPAE_PTE_ADDR_MASK << 4);
-}
-
 static bool selftest_running = false;
 
 static dma_addr_t __arm_lpae_dma_addr(void *pages)
@@ -439,14 +416,15 @@ static int arm_lpae_init_pte(struct arm_lpae_io_pgtable *data,
 static arm_lpae_iopte arm_lpae_install_table(arm_lpae_iopte *table,
 					     arm_lpae_iopte *ptep,
 					     arm_lpae_iopte curr,
-					     struct arm_lpae_io_pgtable *data)
+					     struct io_pgtable_cfg *cfg,
+					     int ref_count)
 {
 	arm_lpae_iopte old, new;
-	struct io_pgtable_cfg *cfg = &data->iop.cfg;
 
-	new = paddr_to_iopte(__pa(table), data) | ARM_LPAE_PTE_TYPE_TABLE;
+	new = __pa(table) | ARM_LPAE_PTE_TYPE_TABLE;
 	if (cfg->quirks & IO_PGTABLE_QUIRK_ARM_NS)
 		new |= ARM_LPAE_PTE_NSTABLE;
+	iopte_tblcnt_set(&new, ref_count);
 
 	/*
 	 * Ensure the table itself is visible before its PTE can be.
@@ -544,7 +522,7 @@ static int __arm_lpae_map(struct arm_lpae_io_pgtable *data, unsigned long iova,
 		if (!cptep)
 			return -ENOMEM;
 
-		pte = arm_lpae_install_table(cptep, ptep, 0, data);
+		pte = arm_lpae_install_table(cptep, ptep, 0, cfg, 0);
 		if (pte)
 			__arm_lpae_free_pages(cptep, tblsz, cfg, cookie);
 
@@ -692,9 +670,11 @@ static int arm_lpae_map_sg(struct io_pgtable_ops *ops, unsigned long iova,
 				arm_lpae_iopte *ptep = ms.pgtable +
 					ARM_LPAE_LVL_IDX(iova, MAP_STATE_LVL,
 							 data);
-				arm_lpae_init_pte(
+				ret = arm_lpae_init_pte(
 					data, iova, phys, prot, MAP_STATE_LVL,
 					ptep, ms.prev_pgtable, false);
+				if (ret)
+					goto out_err;
 				ms.num_pte++;
 			} else {
 				ret = __arm_lpae_map(data, iova, phys, pgsize,
@@ -811,7 +791,7 @@ static size_t arm_lpae_split_blk_unmap(struct arm_lpae_io_pgtable *data,
 		child_cnt++;
 	}
 
-	pte = arm_lpae_install_table(tablep, ptep, blk_pte, data);
+	pte = arm_lpae_install_table(tablep, ptep, blk_pte, cfg, child_cnt);
 	if (pte != blk_pte) {
 		__arm_lpae_free_pages(tablep, tablesz, cfg, cookie);
 		/*

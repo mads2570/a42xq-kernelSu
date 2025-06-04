@@ -880,14 +880,11 @@ try_again:
 		return err;
 
 	/*
-	 * In case the S18A bit is set in the response, let's start the signal
-	 * voltage switch procedure. SPI mode doesn't support CMD11.
-	 * Note that, according to the spec, the S18A bit is not valid unless
-	 * the CCS bit is set as well. We deliberately deviate from the spec in
-	 * regards to this, which allows UHS-I to be supported for SDSC cards.
+	 * In case CCS and S18A in the response is set, start Signal Voltage
+	 * Switch procedure. SPI mode doesn't support CMD11.
 	 */
-	if (!mmc_host_is_spi(host) && (ocr & SD_OCR_S18R) &&
-	    rocr && (*rocr & SD_ROCR_S18A)) {
+	if (!mmc_host_is_spi(host) && rocr &&
+	   ((*rocr & 0x41000000) == 0x41000000)) {
 		err = mmc_set_uhs_voltage(host, pocr);
 		if (err == -EAGAIN) {
 			retries--;
@@ -1400,7 +1397,6 @@ static int _mmc_sd_deferred_resume(struct mmc_host *host)
 	} else if (err) {
 		goto out;
 	}
-	mmc_card_clr_suspended(host->card);
 	err = mmc_resume_clk_scaling(host);
 	if (err) {
 		pr_err("%s: %s: fail to resume clock scaling (%d)\n",
@@ -1408,6 +1404,7 @@ static int _mmc_sd_deferred_resume(struct mmc_host *host)
 		goto out;
 	}
 out:
+	mmc_card_clr_suspended(host->card);
 	mmc_log_string(host, "Exit err: %d\n", err);
 	return err;
 }

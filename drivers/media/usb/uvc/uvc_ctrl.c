@@ -11,7 +11,6 @@
  *
  */
 
-#include <asm/barrier.h>
 #include <linux/kernel.h>
 #include <linux/list.h>
 #include <linux/module.h>
@@ -779,16 +778,12 @@ static s32 uvc_get_le_value(struct uvc_control_mapping *mapping,
 	offset &= 7;
 	mask = ((1LL << bits) - 1) << offset;
 
-	while (1) {
+	for (; bits > 0; data++) {
 		u8 byte = *data & mask;
 		value |= offset > 0 ? (byte >> offset) : (byte << (-offset));
 		bits -= 8 - (offset > 0 ? offset : 0);
-		if (bits <= 0)
-			break;
-
 		offset -= 8;
 		mask = (1 << bits) - 1;
-		data++;
 	}
 
 	/* Sign-extend the value if needed. */
@@ -1281,12 +1276,17 @@ static void uvc_ctrl_send_slave_event(struct uvc_video_chain *chain,
 	uvc_ctrl_send_event(chain, handle, ctrl, mapping, val, changes);
 }
 
-void uvc_ctrl_status_event(struct uvc_video_chain *chain,
-			   struct uvc_control *ctrl, const u8 *data)
+static void uvc_ctrl_status_event_work(struct work_struct *work)
 {
+	struct uvc_device *dev = container_of(work, struct uvc_device,
+					      async_ctrl.work);
+	struct uvc_ctrl_work *w = &dev->async_ctrl;
+	struct uvc_video_chain *chain = w->chain;
 	struct uvc_control_mapping *mapping;
+	struct uvc_control *ctrl = w->ctrl;
 	struct uvc_fh *handle;
 	unsigned int i;
+	int ret;
 
 	mutex_lock(&chain->ctrl_mutex);
 
@@ -1294,7 +1294,7 @@ void uvc_ctrl_status_event(struct uvc_video_chain *chain,
 	ctrl->handle = NULL;
 
 	list_for_each_entry(mapping, &ctrl->info.mappings, list) {
-		s32 value = __uvc_ctrl_get_value(mapping, data);
+		s32 value = __uvc_ctrl_get_value(mapping, w->data);
 
 		/*
 		 * handle may be NULL here if the device sends auto-update
@@ -1313,20 +1313,6 @@ void uvc_ctrl_status_event(struct uvc_video_chain *chain,
 	}
 
 	mutex_unlock(&chain->ctrl_mutex);
-}
-
-static void uvc_ctrl_status_event_work(struct work_struct *work)
-{
-	struct uvc_device *dev = container_of(work, struct uvc_device,
-					      async_ctrl.work);
-	struct uvc_ctrl_work *w = &dev->async_ctrl;
-	int ret;
-
-	uvc_ctrl_status_event(w->chain, w->ctrl, w->data);
-
-	/* The barrier is needed to synchronize with uvc_status_stop(). */
-	if (smp_load_acquire(&dev->flush_status))
-		return;
 
 	/* Resubmit the URB. */
 	w->urb->interval = dev->int_ep->desc.bInterval;
@@ -1336,8 +1322,8 @@ static void uvc_ctrl_status_event_work(struct work_struct *work)
 			   ret);
 }
 
-bool uvc_ctrl_status_event_async(struct urb *urb, struct uvc_video_chain *chain,
-				 struct uvc_control *ctrl, const u8 *data)
+bool uvc_ctrl_status_event(struct urb *urb, struct uvc_video_chain *chain,
+			   struct uvc_control *ctrl, const u8 *data)
 {
 	struct uvc_device *dev = chain->dev;
 	struct uvc_ctrl_work *w = &dev->async_ctrl;
@@ -1863,35 +1849,30 @@ int uvc_xu_ctrl_query(struct uvc_video_chain *chain,
 {
 	struct uvc_entity *entity;
 	struct uvc_control *ctrl;
-	unsigned int i;
-	bool found;
+	unsigned int i, found = 0;
 	u32 reqflags;
 	u16 size;
 	u8 *data = NULL;
 	int ret;
 
 	/* Find the extension unit. */
-	found = false;
 	list_for_each_entry(entity, &chain->entities, chain) {
 		if (UVC_ENTITY_TYPE(entity) == UVC_VC_EXTENSION_UNIT &&
-		    entity->id == xqry->unit) {
-			found = true;
+		    entity->id == xqry->unit)
 			break;
-		}
 	}
 
-	if (!found) {
+	if (entity->id != xqry->unit) {
 		uvc_trace(UVC_TRACE_CONTROL, "Extension unit %u not found.\n",
 			xqry->unit);
 		return -ENOENT;
 	}
 
 	/* Find the control and perform delayed initialization if needed. */
-	found = false;
 	for (i = 0; i < entity->ncontrols; ++i) {
 		ctrl = &entity->controls[i];
 		if (ctrl->index == xqry->selector - 1) {
-			found = true;
+			found = 1;
 			break;
 		}
 	}
@@ -2047,6 +2028,13 @@ static int uvc_ctrl_add_info(struct uvc_device *dev, struct uvc_control *ctrl,
 		ret = -ENOMEM;
 		goto done;
 	}
+
+	/*
+	 * Retrieve control flags from the device. Ignore errors and work with
+	 * default flag values from the uvc_ctrl array when the device doesn't
+	 * properly implement GET_INFO on standard controls.
+	 */
+	uvc_ctrl_get_flags(dev, ctrl, &ctrl->info);
 
 	ctrl->initialized = 1;
 
@@ -2273,13 +2261,6 @@ static void uvc_ctrl_init_ctrl(struct uvc_device *dev, struct uvc_control *ctrl)
 		if (uvc_entity_match_guid(ctrl->entity, info->entity) &&
 		    ctrl->index == info->index) {
 			uvc_ctrl_add_info(dev, ctrl, info);
-			/*
-			 * Retrieve control flags from the device. Ignore errors
-			 * and work with default flag values from the uvc_ctrl
-			 * array when the device doesn't properly implement
-			 * GET_INFO on standard controls.
-			 */
-			uvc_ctrl_get_flags(dev, ctrl, &ctrl->info);
 			break;
 		 }
 	}

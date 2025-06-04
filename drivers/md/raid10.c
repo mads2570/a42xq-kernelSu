@@ -1138,7 +1138,7 @@ static void raid10_read_request(struct mddev *mddev, struct bio *bio,
 	struct md_rdev *err_rdev = NULL;
 	gfp_t gfp = GFP_NOIO;
 
-	if (slot >= 0 && r10_bio->devs[slot].rdev) {
+	if (r10_bio->devs[slot].rdev) {
 		/*
 		 * This is an error retry, but we cannot
 		 * safely dereference the rdev in the r10_bio,
@@ -1547,7 +1547,6 @@ static void __make_request(struct mddev *mddev, struct bio *bio, int sectors)
 	r10_bio->mddev = mddev;
 	r10_bio->sector = bio->bi_iter.bi_sector;
 	r10_bio->state = 0;
-	r10_bio->read_slot = -1;
 	memset(r10_bio->devs, 0, sizeof(r10_bio->devs[0]) * conf->copies);
 
 	if (bio_data_dir(bio) == READ)
@@ -1863,12 +1862,9 @@ static int raid10_remove_disk(struct mddev *mddev, struct md_rdev *rdev)
 	int err = 0;
 	int number = rdev->raid_disk;
 	struct md_rdev **rdevp;
-	struct raid10_info *p;
+	struct raid10_info *p = conf->mirrors + number;
 
 	print_conf(conf);
-	if (unlikely(number >= mddev->raid_disks))
-		return 0;
-	p = conf->mirrors + number;
 	if (rdev == p->rdev)
 		rdevp = &p->rdev;
 	else if (rdev == p->replacement)
@@ -2266,22 +2262,11 @@ static void recovery_request_write(struct mddev *mddev, struct r10bio *r10_bio)
 {
 	struct r10conf *conf = mddev->private;
 	int d;
-	struct bio *wbio = r10_bio->devs[1].bio;
-	struct bio *wbio2 = r10_bio->devs[1].repl_bio;
-
-	/* Need to test wbio2->bi_end_io before we call
-	 * generic_make_request as if the former is NULL,
-	 * the latter is free to free wbio2.
-	 */
-	if (wbio2 && !wbio2->bi_end_io)
-		wbio2 = NULL;
+	struct bio *wbio, *wbio2;
 
 	if (!test_bit(R10BIO_Uptodate, &r10_bio->state)) {
 		fix_recovery_read_error(r10_bio);
-		if (wbio->bi_end_io)
-			end_sync_request(r10_bio);
-		if (wbio2)
-			end_sync_request(r10_bio);
+		end_sync_request(r10_bio);
 		return;
 	}
 
@@ -2290,6 +2275,14 @@ static void recovery_request_write(struct mddev *mddev, struct r10bio *r10_bio)
 	 * and submit the write request
 	 */
 	d = r10_bio->devs[1].devnum;
+	wbio = r10_bio->devs[1].bio;
+	wbio2 = r10_bio->devs[1].repl_bio;
+	/* Need to test wbio2->bi_end_io before we call
+	 * generic_make_request as if the former is NULL,
+	 * the latter is free to free wbio2.
+	 */
+	if (wbio2 && !wbio2->bi_end_io)
+		wbio2 = NULL;
 	if (wbio->bi_end_io) {
 		atomic_inc(&conf->mirrors[d].rdev->nr_pending);
 		md_sync_acct(conf->mirrors[d].rdev->bdev, bio_sectors(wbio));
@@ -2957,6 +2950,10 @@ static sector_t raid10_sync_request(struct mddev *mddev, sector_t sector_nr,
 	sector_t chunk_mask = conf->geo.chunk_mask;
 	int page_idx = 0;
 
+	if (!mempool_initialized(&conf->r10buf_pool))
+		if (init_resync(conf))
+			return 0;
+
 	/*
 	 * Allow skipping a full rebuild for incremental assembly
 	 * of a clean array, like RAID1 does.
@@ -2971,10 +2968,6 @@ static sector_t raid10_sync_request(struct mddev *mddev, sector_t sector_nr,
 		*skipped = 1;
 		return mddev->dev_sectors - sector_nr;
 	}
-
-	if (!mempool_initialized(&conf->r10buf_pool))
-		if (init_resync(conf))
-			return 0;
 
  skipped:
 	max_sector = mddev->dev_sectors;
@@ -3671,20 +3664,6 @@ static int setup_geo(struct geom *geo, struct mddev *mddev, enum geo_type new)
 	return nc*fc;
 }
 
-static void raid10_free_conf(struct r10conf *conf)
-{
-	if (!conf)
-		return;
-
-	mempool_exit(&conf->r10bio_pool);
-	kfree(conf->mirrors);
-	kfree(conf->mirrors_old);
-	kfree(conf->mirrors_new);
-	safe_put_page(conf->tmppage);
-	bioset_exit(&conf->bio_split);
-	kfree(conf);
-}
-
 static struct r10conf *setup_conf(struct mddev *mddev)
 {
 	struct r10conf *conf = NULL;
@@ -3767,24 +3746,20 @@ static struct r10conf *setup_conf(struct mddev *mddev)
 	return conf;
 
  out:
-	raid10_free_conf(conf);
+	if (conf) {
+		mempool_exit(&conf->r10bio_pool);
+		kfree(conf->mirrors);
+		safe_put_page(conf->tmppage);
+		bioset_exit(&conf->bio_split);
+		kfree(conf);
+	}
 	return ERR_PTR(err);
-}
-
-static void raid10_set_io_opt(struct r10conf *conf)
-{
-	int raid_disks = conf->geo.raid_disks;
-
-	if (!(conf->geo.raid_disks % conf->geo.near_copies))
-		raid_disks /= conf->geo.near_copies;
-	blk_queue_io_opt(conf->mddev->queue, (conf->mddev->chunk_sectors << 9) *
-			 raid_disks);
 }
 
 static int raid10_run(struct mddev *mddev)
 {
 	struct r10conf *conf;
-	int i, disk_idx;
+	int i, disk_idx, chunk_size;
 	struct raid10_info *disk;
 	struct md_rdev *rdev;
 	sector_t size;
@@ -3805,9 +3780,6 @@ static int raid10_run(struct mddev *mddev)
 	if (!conf)
 		goto out;
 
-	mddev->thread = conf->thread;
-	conf->thread = NULL;
-
 	if (mddev_is_clustered(conf->mddev)) {
 		int fc, fo;
 
@@ -3820,13 +3792,21 @@ static int raid10_run(struct mddev *mddev)
 		}
 	}
 
+	mddev->thread = conf->thread;
+	conf->thread = NULL;
+
+	chunk_size = mddev->chunk_sectors << 9;
 	if (mddev->queue) {
 		blk_queue_max_discard_sectors(mddev->queue,
 					      mddev->chunk_sectors);
 		blk_queue_max_write_same_sectors(mddev->queue, 0);
 		blk_queue_max_write_zeroes_sectors(mddev->queue, 0);
-		blk_queue_io_min(mddev->queue, mddev->chunk_sectors << 9);
-		raid10_set_io_opt(conf);
+		blk_queue_io_min(mddev->queue, chunk_size);
+		if (conf->geo.raid_disks % conf->geo.near_copies)
+			blk_queue_io_opt(mddev->queue, chunk_size * conf->geo.raid_disks);
+		else
+			blk_queue_io_opt(mddev->queue, chunk_size *
+					 (conf->geo.raid_disks / conf->geo.near_copies));
 	}
 
 	rdev_for_each(rdev, mddev) {
@@ -3986,7 +3966,10 @@ static int raid10_run(struct mddev *mddev)
 
 out_free_conf:
 	md_unregister_thread(&mddev->thread);
-	raid10_free_conf(conf);
+	mempool_exit(&conf->r10bio_pool);
+	safe_put_page(conf->tmppage);
+	kfree(conf->mirrors);
+	kfree(conf);
 	mddev->private = NULL;
 out:
 	return -EIO;
@@ -3994,7 +3977,15 @@ out:
 
 static void raid10_free(struct mddev *mddev, void *priv)
 {
-	raid10_free_conf(priv);
+	struct r10conf *conf = priv;
+
+	mempool_exit(&conf->r10bio_pool);
+	safe_put_page(conf->tmppage);
+	kfree(conf->mirrors);
+	kfree(conf->mirrors_old);
+	kfree(conf->mirrors_new);
+	bioset_exit(&conf->bio_split);
+	kfree(conf);
 }
 
 static void raid10_quiesce(struct mddev *mddev, int quiesce)
@@ -4729,7 +4720,6 @@ static void end_reshape(struct r10conf *conf)
 		stripe /= conf->geo.near_copies;
 		if (conf->mddev->queue->backing_dev_info->ra_pages < 2 * stripe)
 			conf->mddev->queue->backing_dev_info->ra_pages = 2 * stripe;
-		raid10_set_io_opt(conf);
 	}
 	conf->fullsync = 0;
 }

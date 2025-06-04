@@ -19,6 +19,7 @@
 #include <linux/zsmalloc.h>
 #include <linux/crypto.h>
 #include <linux/spinlock.h>
+#include <linux/mm.h>
 
 #include "zcomp.h"
 #include "zram_dedup.h"
@@ -54,6 +55,9 @@ enum zram_pageflags {
 	ZRAM_IDLE,	/* not accessed page since last idle marking */
 	ZRAM_EXPIRE,
 	ZRAM_READ_BDEV,
+	ZRAM_PPR,
+	ZRAM_UNDER_PPR,
+	ZRAM_LRU,
 
 	__NR_ZRAM_PAGEFLAGS,
 };
@@ -105,6 +109,19 @@ struct zram_stats {
 #ifdef CONFIG_ZRAM_LRU_WRITEBACK
 	atomic64_t bd_expire;
 	atomic64_t bd_objcnt;
+	atomic64_t bd_size;
+	atomic64_t bd_max_count;
+	atomic64_t bd_max_size;
+	atomic64_t bd_ppr_count;
+	atomic64_t bd_ppr_reads;
+	atomic64_t bd_ppr_writes;
+	atomic64_t bd_ppr_objcnt;
+	atomic64_t bd_ppr_size;
+	atomic64_t bd_ppr_max_count;
+	atomic64_t bd_ppr_max_size;
+	atomic64_t bd_objreads;
+	atomic64_t bd_objwrites;
+	atomic64_t lru_pages;
 #endif
 	atomic64_t dup_data_size;	/*
 					 * compressed size of pages
@@ -114,6 +131,10 @@ struct zram_stats {
 };
 
 #ifdef CONFIG_ZRAM_LRU_WRITEBACK
+#define ZRAM_WB_THRESHOLD 32
+#define NR_ZWBS 64
+#define NR_FALLOC_PAGES 512
+#define FALLOC_ALIGN_MASK (~(NR_FALLOC_PAGES - 1))
 struct zram_wb_header {
 	u32 index;
 	u32 size;
@@ -121,11 +142,15 @@ struct zram_wb_header {
 
 struct zram_wb_work {
 	struct work_struct work;
-	struct page *src_page;
+	struct page *src_page[NR_ZWBS];
 	struct page *dst_page;
 	struct bio *bio;
+	struct bio *bio_chain;
+	struct zram_writeback_buffer *buf;
 	struct zram *zram;
 	unsigned long handle;
+	int nr_pages;
+	bool ppr;
 };
 
 struct zram_wb_entry {
@@ -134,9 +159,31 @@ struct zram_wb_entry {
 	unsigned int size;
 };
 
-static struct zram *g_zram;
-static struct notifier_block zram_app_launch_nb;
-static bool is_app_launch;
+struct zwbs {
+	struct zram_wb_entry entry[ZRAM_WB_THRESHOLD];
+	struct page *page;
+	u32 cnt;
+	u32 off;
+};
+
+struct zram_writeback_buffer {
+	struct zwbs *zwbs[NR_ZWBS];
+	int idx;
+};
+
+enum zram_entry_type {
+	ZRAM_WB_TYPE = 1,
+	ZRAM_WB_HUGE_TYPE,
+	ZRAM_SAME_TYPE,
+	ZRAM_HUGE_TYPE,
+};
+
+bool zram_is_app_launch(void);
+void zram_add_to_writeback_list(struct list_head *list, unsigned long index);
+int zram_writeback_list(struct list_head *list);
+void flush_writeback_buffer(struct list_head *list);
+int zram_get_entry_type(unsigned long index);
+int zram_prefetch_entry(unsigned long index);
 #endif
 
 struct zram_hash {
@@ -187,11 +234,17 @@ struct zram {
 	struct task_struct *wbd;
 	wait_queue_head_t wbd_wait;
 	u8 *wb_table;
+	unsigned long *chunk_bitmap;
+	unsigned long nr_lru_pages;
 	bool wbd_running;
-	bool io_complete;
 	struct list_head list;
 	spinlock_t list_lock;
 	spinlock_t wb_table_lock;
+	spinlock_t bitmap_lock;
+	unsigned long *blk_bitmap;
+	struct mutex blk_bitmap_lock;
+	unsigned long *read_req_bitmap;
+	struct zram_writeback_buffer *buf;
 #endif
 };
 
