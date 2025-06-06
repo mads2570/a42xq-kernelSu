@@ -1,10 +1,10 @@
 name: Build USUKernel A14 with KernelSU
 
 on:
-  release:
-    types: [published]
-    tags:
-      - 'v*'
+   workflow_call:
+   workflow_dispatch: 
+       tags:
+       - 'v*'
 
 jobs:
   build:
