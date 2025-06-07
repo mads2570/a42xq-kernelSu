@@ -62,21 +62,21 @@ jobs:
           ref:
           path: anykernel
 
-      - name: Setup Ccache
-        uses: hendrikmuhs/ccache-action@v1.2
-        with:
-          key: Build-USUKernel-${{ matrix.device }}
-          save: ${{ github.event_name != 'pull_request' }}
-          max-size: 2G
-            path-filter: |
-              **/*.c
-              **/*.h
-              **/*.S
-              **/*.s
-              **/*.dts
-              **/Makefile
-              **/.config
-              **/scripts/*
+     - name: Setup Ccache
+  uses: hendrikmuhs/ccache-action@v1.2
+  with:
+    key: Build-USUKernel-${{ matrix.device }}
+    save: ${{ github.event_name != 'pull_request' }}
+    max-size: 2G
+    path-filter: |
+      **/*.c
+      **/*.h
+      **/*.S
+      **/*.s
+      **/*.dts
+      **/Makefile
+      **/.config
+      **/scripts/*
 
       - name: Fix Unsupported Character in mkdtimg and Grant Permissions
         run: |
