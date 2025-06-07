@@ -10,7 +10,7 @@ jobs:
   build:
     strategy:
       matrix:
-        device: [m23xq]
+        device: [a42xq]
         
     name: Build Kernel For ${{ matrix.device }}
     runs-on: ubuntu-latest
