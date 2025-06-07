@@ -23,9 +23,7 @@ jobs:
       - name: Installing Dependencies
         run: |
           sudo apt update -y
-          sudo apt-get install -y lld binutils clang llvm zip flex bison libncurses-dev
-gawk libiberty-dev autoconf kmod bc build-essential gcc libc6 curl libstdc++6 git wget
-libssl-dev cpio p7zip-full ccache
+          sudo apt-get install -y lld binutils clang llvm zip flex bison libncurses-devgawk libiberty-dev autoconf kmod bc build-essential gcc libc6 curl libstdc++6 git wgetlibssl-dev cpio p7zip-full ccache
           sudo apt clean
 
       - name: Setup kernel source
@@ -37,9 +35,7 @@ libssl-dev cpio p7zip-full ccache
       - name: Add KernelSU setup.sh
         run: |
           cd kernel-source
-          curl -LSs
-"https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next-susfs/kernel/setup.sh" |
-bash -s next-susfs
+          curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next-susfs/kernel/setup.sh" | bash -s next-susfs
 
       - name: Setup submodules
         working-directory: kernel-source
@@ -55,12 +51,8 @@ bash -s next-susfs
       - name: Download Build Tools
         if: steps.cache-aosp-clang.outputs.cache-hit != 'true'
         run: |
-          git clone
-https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86 --depth=1
---single-branch --no-tags -b master aosp-clang/clang
-          git clone
-https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aach64/aarch64-linux-android-4.9 -b android-14.0.0_r0.47 --depth=1 --single-branch --no-tags
-aosp-clang/aarch64-linux-android-4.9
+          git clone https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86 --depth=1 --single-branch --no-tags -b master aosp-clang/clang
+          git clone https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aach64/aarch64-linux-android-4.9 -b android-14.0.0_r0.47 --depth=1 --single-branch --no-tagsaosp-clang/aarch64-linux-android-4.9
 
       - name: Checkout Anykernel
         uses: actions/checkout@v4
@@ -89,10 +81,8 @@ aosp-clang/aarch64-linux-android-4.9
       - name: Fix Unsupported Character in mkdtimg and Grant Permissions
         run: |
           sh fix-mkdtimg.sh
-          chmod u+x
-/home/runner/work/a42xq-kernelSu/a42xq-kernelSu/kernel-source//tools/mkdtimg
-          chmod u+x
-/home/runner/work/a42xq-kernelSu/a42xq-kernelSu/kernel-source//tools/mkdtimg
+          chmod u+x /home/runner/work/a42xq-kernelSu/a42xq-kernelSu/kernel-source//tools/mkdtimg
+          chmod u+x /home/runner/work/a42xq-kernelSu/a42xq-kernelSu/kernel-source//tools/mkdtimg
 
       - name: Build Kernel
         working-directory: kernel-source
@@ -103,19 +93,14 @@ aosp-clang/aarch64-linux-android-4.9
           export PATH
           export ARCH=arm64
           export CLANG_TRIPLE=aarch64-linux-gnu-
-          export KERNEL_MAKE_ENV="DTC_EXT=$(pwd)/tools/dtc
-CONFIG_BUILD_ARM64_DT_OVERLAY=y"
+          export KERNEL_MAKE_ENV="DTC_EXT=$(pwd)/tools/dtc CONFIG_BUILD_ARM64_DT_OVERLAY=y"
           output_dir=out
           date=$(date +"%Y%m%d%H%M")
           export PATH="/usr/lib/ccache:$PATH"
           echo "date=$date" >> $GITHUB_ENV
           echo "Building kernel with $args"
-          make -C $(pwd) O=out $KERNEL_MAKE_ENV CC="ccache clang" LLVM=1 LLVM_IAS=1
-vendor/a42xq_eur_open_defconfig && make O=out $KERNEL_MAKE_ENV CC="ccache clang" LLVM=1
-LLVM_IAS=1 -j$(grep -c ^processor /proc/cpuinfo)
-          $GITHUB_WORKSPACE/kernel-source//tools/mkdtimg create
-$GITHUB_WORKSPACE/kernel-source/out/arch/arm64/boot/dtbo.img --page_size=4096 $(find
-out/arch/arm64/boot/dts/samsung/a42/a42xq/ -name *.dtbo)
+          make -C $(pwd) O=out $KERNEL_MAKE_ENV CC="ccache clang" LLVM=1 LLVM_IAS=1 vendor/a42xq_eur_open_defconfig && make O=out $KERNEL_MAKE_ENV CC="ccache clang" LLVM=1 LLVM_IAS=1 -j$(grep -c ^processor /proc/cpuinfo)
+          $GITHUB_WORKSPACE/kernel-source//tools/mkdtimg create $GITHUB_WORKSPACE/kernel-source/out/arch/arm64/boot/dtbo.img --page_size=4096 $(find out/arch/arm64/boot/dts/samsung/a42/a42xq/ -name *.dtbo)
 
       - name: Prepare Anykernel
         working-directory: anykernel
@@ -123,8 +108,7 @@ out/arch/arm64/boot/dts/samsung/a42/a42xq/ -name *.dtbo)
           rm -f zip_up_kernel.sh
           cp $GITHUB_WORKSPACE/kernel-source/out/arch/arm64/boot/Image .
           cp $GITHUB_WORKSPACE/kernel-source/out/arch/arm64/boot/dtbo.img ./dtbo
-          cp
-$GITHUB_WORKSPACE/kernel-source/out/arch/arm64/boot/dts/vendor/qcom/lagoon.dtb ./dtb
+          cp $GITHUB_WORKSPACE/kernel-source/out/arch/arm64/boot/dts/vendor/qcom/lagoon.dtb ./dtb
           ZIP_NAME="USUKernel_For_${{ matrix.device }}"
           echo "ZIP_NAME=$ZIP_NAME" >> $GITHUB_ENV
           zip -r "$ZIP_NAME.zip" *
