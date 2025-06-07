@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Set the correct Clang binary location (your provided path)
-export CLANG="$HOME/linux-x86-refs_heads_android14-release/clang-r487747c/bin"
+export CLANG="$HOME/aosp-clang/clang/clang-r547379/bin"
 
 # Set the GCC binary location
 export GCC64="$HOME/aosp-clang/aarch64-linux-android-4.9/bin"
@@ -56,7 +56,7 @@ make -C "$(pwd)" mrproper
 
 # Run the make command to configure the kernel
 echo "Running kernel make process..."
-make -C "$(pwd)" O="$output_dir" $KERNEL_MAKE_ENV LLVM=1 LLVM_IAS=1 CC="ccache $CC" CLANG_TRIPLE="$CLANG_TRIPLE" vendor/m23xq_eur_open_defconfig
+make -C "$(pwd)" O="$output_dir" $KERNEL_MAKE_ENV LLVM=1 LLVM_IAS=1 CC="ccache $CC" CLANG_TRIPLE="$CLANG_TRIPLE" vendor/a42xq_eur_open_defconfig
 
 # Uncomment this if you need to adjust the kernel configuration manually
 # make -C "$(pwd)" O="$output_dir" $KERNEL_MAKE_ENV LLVM=1 LLVM_IAS=1 CC="ccache $CC" CLANG_TRIPLE="$CLANG_TRIPLE" menuconfig
@@ -66,7 +66,7 @@ echo "Compiling the kernel..."
 make -C "$(pwd)" O="$output_dir" $KERNEL_MAKE_ENV LLVM=1 LLVM_IAS=1 CC="ccache $CC" -j"$(nproc)" CONFIG_DEBUG_SECTION_MISMATCH=y
 
 # Check if device tree overlays (DTBO) are available, then create the DTBO image
-DTBO_DIR="$(pwd)/out/arch/arm64/boot/dts/samsung/m23/m23xq/"
+DTBO_DIR="$(pwd)/out/arch/arm64/boot/dts/samsung/a42/a42xq/"
 DTBO_FILES=$(find "$DTBO_DIR" -name "*.dtbo")
 
 if [ -n "$DTBO_FILES" ]; then
