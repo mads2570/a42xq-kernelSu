@@ -12,7 +12,7 @@ jobs:
 
     name: Build Kernel For ${{ matrix.device }}
     runs-on: ubuntu-22.04
-    env:
+     env:
       CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
       CCACHE_NOHASHDIR: "true"
       CCACHE_HARDLINK: "true"
