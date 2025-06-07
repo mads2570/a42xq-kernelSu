@@ -13,9 +13,7 @@ jobs:
       CCACHE_NOHASHDIR: "true"
       CCACHE_HARDLINK: "true"
     steps:
-      - uses: actions/checkout@v4
-      - name: Prepare Configuration
-
+      
       - name: Install necessary packages
         run: |
           lsb_release -a
