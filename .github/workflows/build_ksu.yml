@@ -2,8 +2,9 @@ name: Build USUKernel A14 with KernelSU
 
 on:
   workflow_call:
-  workflows:
-          - 'v*'
+          types: [published]
+          tags: 
+            - 'v*'
 
 jobs:
   build:
