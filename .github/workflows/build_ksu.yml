@@ -83,7 +83,7 @@ jobs:
 
       - name: Fix Unsupported Character in mkdtimg and Grant Permissions
         run: |
-          sh fix-mkdtimg.sh
+         
           chmod u+x /home/runner/work/a42xq-kernelSu/a42xq-kernelSu/kernel-source//tools/mkdtimg
           chmod u+x /home/runner/work/a42xq-kernelSu/a42xq-kernelSu/kernel-source//tools/mkdtimg
 
