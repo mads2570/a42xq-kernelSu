@@ -30,7 +30,7 @@ jobs:
       - name: Setup kernel source
         uses: actions/checkout@v4
         with:
-          ref: 
+          ref: ksu
           path: kernel-source
 
       - name: Add KernelSU setup.sh
