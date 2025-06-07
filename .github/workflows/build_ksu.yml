@@ -3,7 +3,7 @@ name: Build USUKernel A14 with KernelSU
 on:
   workflow_call:
   workflow_dispatch:
-
+  
 jobs:
   build:
     strategy:
@@ -16,8 +16,7 @@ jobs:
       CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
       CCACHE_NOHASHDIR: "true"
       CCACHE_HARDLINK: "true"
-
-   steps:
+      
    
     - name: Install necessary packages
        run: |
