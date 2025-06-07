@@ -3,8 +3,6 @@ name: Build USUKernel A14 with KernelSU
 on:
   workflow_call:
   workflow_dispatch:
-  tags:
-    - 'v*'
 
 jobs:
   build:
