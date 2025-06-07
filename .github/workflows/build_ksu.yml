@@ -22,7 +22,7 @@ jobs:
       - name: Installing Dependencies
         run: |
           sudo apt update -y
-          sudo apt-get install -y lld binutils clang llvm zip flex bison libncurses-devgawk libiberty-dev autoconf kmod bc build-essential gcc libc6 curl libstdc++6 git wgetlibssl-dev cpio p7zip-full ccache
+          sudo apt-get install -y lld binutils clang llvm zip flex bison libncurses-devgawk libiberty-dev autoconf kmod bc build-essential gcc libc6 curl libstdc++6 git wget libssl-dev cpio p7zip-full ccache
           sudo apt clean
 
       - name: Setup kernel source
