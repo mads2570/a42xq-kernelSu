@@ -11,7 +11,7 @@ jobs:
         device: [a42xq]
 
     name: Build Kernel For ${{ matrix.device }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     env:
       CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
       CCACHE_NOHASHDIR: "true"
@@ -19,12 +19,20 @@ jobs:
 
     steps:
 
-     - name: Installing Dependencies
+     - name: Install necessary packages
         run: |
-          sudo apt update -y
-          sudo apt-get install -y lld binutils clang llvm zip flex bison libncurses5-dev gawk libiberty-dev autoconf kmod bc build-essential gcc libc6 curl libstdc++6 git wget libssl-dev cpio p7zip-full ccache
-          sudo apt clean
-
+          lsb_release -a
+          UBUNTU_VERSION=$(lsb_release -sr)
+          sudo apt-get update
+          if [ $UBUNTU_VERSION == "22.04" ]; then
+            sudo apt-get install git ccache automake flex lzop bison gperf build-essential zip curl zlib1g-dev g++-multilib libxml2-utils bzip2 libbz2-dev libbz2-1.0 libghc-bzlib-dev squashfs-tools pngcrush schedtool dpkg-dev liblz4-tool make optipng maven libssl-dev pwgen libswitch-perl policycoreutils minicom libxml-sax-base-perl libxml-simple-perl bc libc6-dev-i386 lib32ncurses5-dev libx11-dev lib32z-dev libgl1-mesa-dev xsltproc unzip device-tree-compiler python2 dos2unix libncurses5
+            sudo apt-get install p7zip p7zip-full -y
+            sudo ls -lah /usr/bin/ | grep "python"
+          else
+            sudo apt-get install git ccache automake flex lzop bison gperf build-essential zip curl zlib1g-dev g++-multilib libxml2-utils bzip2 libbz2-dev libbz2-1.0 libghc-bzlib-dev squashfs-tools pngcrush schedtool dpkg-dev make optipng maven libssl-dev pwgen libswitch-perl policycoreutils minicom libxml-sax-base-perl libxml-simple-perl bc libc6-dev-i386 libx11-dev lib32z-dev libgl1-mesa-dev xsltproc unzip device-tree-compiler dos2unix libncurses5
+            sudo apt-get install zstd libc6 binutils libc6-dev-i386 gcc g++ p7zip p7zip-full -y
+            sudo ls -lah /usr/bin/ | grep "python"
+          fi
             
       - name: Setup kernel source
         uses: actions/checkout@v4
