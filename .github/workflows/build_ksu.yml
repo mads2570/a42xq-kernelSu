@@ -1,0 +1,143 @@
+name: Build USUKernel A14 with KernelSU
+
+on:
+   workflow_call:
+   workflow_dispatch: 
+       tags:
+       - 'v*'
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        device: [a42xq]
+        
+    name: Build Kernel For ${{ matrix.device }}
+    runs-on: ubuntu-latest
+    env:
+      CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
+      CCACHE_NOHASHDIR: "true"
+      CCACHE_HARDLINK: "true"
+    
+    steps:
+
+      - name: Installing Dependencies
+        run: |
+          sudo apt update -y
+          sudo apt-get install -y lld binutils clang llvm zip flex bison libncurses-dev gawk libiberty-dev autoconf kmod bc build-essential gcc libc6 curl libstdc++6 git wget libssl-dev cpio p7zip-full ccache
+          sudo apt clean
+          
+      - name: Setup kernel source
+        uses: actions/checkout@v4
+        with:
+          ref: 
+          path: kernel-source
+
+      - name: Add KernelSU setup.sh
+        run: |
+          cd kernel-source
+          curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next-susfs/kernel/setup.sh" | bash -s next-susfs
+          
+      - name: Setup submodules
+        working-directory: kernel-source
+        run: git submodule update --init --recursive --depth 0
+        
+      - name: Cache Build Tools
+        id: cache-aosp-clang
+        uses: actions/cache@v4
+        with:
+          path: aosp-clang
+          key: aosp-clang-${{ runner.os }}-${{ github.ref }}-${{ matrix.device }}
+        
+      - name: Download Build Tools
+        if: steps.cache-aosp-clang.outputs.cache-hit != 'true'
+        run: |
+          git clone https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86 --depth=1 --single-branch --no-tags -b master aosp-clang/clang
+          git clone https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 -b android-14.0.0_r0.47 --depth=1 --single-branch --no-tags aosp-clang/aarch64-linux-android-4.9
+          
+      - name: Checkout Anykernel
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+          repository: mads2570/AnyKernel3
+          ref: 
+          path: anykernel
+
+      - name: Setup Ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: Build-USUKernel-${{ matrix.device }}
+          save: ${{ github.event_name != 'pull_request' }}
+          max-size: 2G
+          
+      - name: Build Kernel
+        working-directory: kernel-source
+        run: |
+          CLANG="$GITHUB_WORKSPACE/aosp-clang/clang/bin"
+          GCC64="$GITHUB_WORKSPACE/aosp-clang/aarch64-linux-android-4.9/bin"
+          PATH=$CLANG:$GCC64:$PATH
+          export PATH
+          export ARCH=arm64
+          export CLANG_TRIPLE=aarch64-linux-gnu-
+          export KERNEL_MAKE_ENV="DTC_EXT=$(pwd)/tools/dtc CONFIG_BUILD_ARM64_DT_OVERLAY=y"
+          output_dir=out
+          date=$(date +"%Y%m%d%H%M")
+          export PATH="/usr/lib/ccache:$PATH"
+          echo "date=$date" >> $GITHUB_ENV
+          echo "Building kernel with $args"  
+          make -C $(pwd) O=out $KERNEL_MAKE_ENV CC="ccache clang" LLVM=1 LLVM_IAS=1 vendor/a42xq_eur_open_defconfig && make O=out $KERNEL_MAKE_ENV CC="ccache clang" LLVM=1 LLVM_IAS=1 -j$(grep -c ^processor /proc/cpuinfo)
+          $GITHUB_WORKSPACE/kernel-source//tools/mkdtimg create $GITHUB_WORKSPACE/kernel-source/out/arch/arm64/boot/dtbo.img --page_size=4096 $(find out/arch/arm64/boot/dts/samsung/a42/a42xq/ -name *.dtbo)
+          
+      - name: Prepare Anykernel
+        working-directory: anykernel
+        run: |
+          rm -f zip_up_kernel.sh
+          cp $GITHUB_WORKSPACE/kernel-source/out/arch/arm64/boot/Image .
+          cp $GITHUB_WORKSPACE/kernel-source/out/arch/arm64/boot/dtbo.img ./dtbo
+          cp $GITHUB_WORKSPACE/kernel-source/out/arch/arm64/boot/dts/vendor/qcom/lagoon.dtb ./dtb
+          ZIP_NAME="USUKernel_For_${{ matrix.device }}"
+          echo "ZIP_NAME=$ZIP_NAME" >> $GITHUB_ENV
+          zip -r "$ZIP_NAME.zip" *
+          if [ ! -f "$GITHUB_WORKSPACE/$ZIP_NAME.zip" ]; then
+            mv "$ZIP_NAME.zip" $GITHUB_WORKSPACE
+          fi
+          
+      - name: Upload Anykernel
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ZIP_NAME }}
+          path: anykernel/*
+            
+      - name: Zip Kernel Source
+        run: |
+          ZIP_NAME="source_for_usu_kernel"
+          echo "Listing files before zipping:"
+          rm -rf $GITHUB_WORKSPACE/kernel-source/out/*
+          rm -rf $GITHUB_WORKSPACE/aosp-clang/*
+          ls -R kernel-source
+          # Find all files and directories in kernel-source and exclude the 'out' folder
+          find kernel-source -type f | zip -r "$ZIP_NAME.zip" -@
+          echo "Listing files in workspace:"
+          ls -l $GITHUB_WORKSPACE
+          # Check if the zip file already exists before moving
+          echo "Before move: $(pwd)/$ZIP_NAME.zip"
+          if [ ! -f "$GITHUB_WORKSPACE/$ZIP_NAME.zip" ]; then
+            mv "$ZIP_NAME.zip" $GITHUB_WORKSPACE
+          fi
+          echo "After move: $GITHUB_WORKSPACE/$ZIP_NAME.zip"
+
+      - name: Release Kernel Source
+        if: success()
+        uses: softprops/action-gh-release@v1
+        with:
+          name: "${{ github.ref_name }}_source_for_usu_kernel"
+          files: |
+            ${{ github.workspace }}/source_for_usu_kernel.zip
+            
+      - name: Release Kernel
+        if: success()
+        uses: softprops/action-gh-release@v1
+        with:
+          name: "${{ github.ref_name }}_USUKernel_For_${{ matrix.device }}"
+          files: |
+            ${{ env.ZIP_NAME }}.zip
