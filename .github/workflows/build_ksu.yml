@@ -18,7 +18,6 @@ jobs:
       CCACHE_HARDLINK: "true"
 
     steps:
-
      - name: Install necessary packages
        run: |
           lsb_release -a
