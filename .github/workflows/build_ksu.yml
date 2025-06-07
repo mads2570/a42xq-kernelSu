@@ -2,8 +2,8 @@ name: Build USUKernel A14 with KernelSU
 
 on:
   workflow_call:
-    workflows:
-      - 'v*'
+  workflows:
+          - 'v*'
 
 jobs:
   build:
@@ -62,21 +62,21 @@ jobs:
           ref:
           path: anykernel
 
-     - name: Setup Ccache
-  uses: hendrikmuhs/ccache-action@v1.2
-  with:
-    key: Build-USUKernel-${{ matrix.device }}
-    save: ${{ github.event_name != 'pull_request' }}
-    max-size: 2G
-    path-filter: |
-      **/*.c
-      **/*.h
-      **/*.S
-      **/*.s
-      **/*.dts
-      **/Makefile
-      **/.config
-      **/scripts/*
+      - name: Setup Ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: Build-USUKernel-${{ matrix.device }}
+          save: ${{ github.event_name != 'pull_request' }}
+          max-size: 2G
+          path-filter: |
+           **/*.c
+           **/*.h
+           **/*.S
+           **/*.s
+           **/*.dts
+           **/Makefile
+           **/.config
+           **/scripts/*
 
       - name: Fix Unsupported Character in mkdtimg and Grant Permissions
         run: |
@@ -129,8 +129,7 @@ jobs:
           rm -rf $GITHUB_WORKSPACE/kernel-source/out/*
           rm -rf $GITHUB_WORKSPACE/aosp-clang/*
           ls -R kernel-source
-          # Find all files and directories in kernel-source and exclude the 'out'
-folder
+          # Find all files and directories in kernel-source and exclude the 'out' folder
           find kernel-source -type f | zip -r "$ZIP_NAME.zip" -@
           echo "Listing files in workspace:"
           ls -l $GITHUB_WORKSPACE
